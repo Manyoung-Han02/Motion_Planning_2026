@@ -1,0 +1,164 @@
+simulation:
+  dt: 0.2
+  horizon: 18.0
+
+visualization:
+  style: clean
+
+warehouse:
+  width: 18.0
+  height: 12.0
+  resolution: 0.25
+  static_obstacles:
+    - id: shelf_01
+      type: rectangle
+      x: 2.6
+      y: 1.0
+      width: 0.75
+      height: 3.3
+    - id: shelf_02
+      type: rectangle
+      x: 2.6
+      y: 7.1
+      width: 0.75
+      height: 3.6
+    - id: shelf_03
+      type: rectangle
+      x: 5.4
+      y: 2.0
+      width: 0.85
+      height: 3.7
+    - id: shelf_04
+      type: rectangle
+      x: 5.4
+      y: 7.4
+      width: 0.85
+      height: 2.8
+    - id: shelf_05
+      type: rectangle
+      x: 8.4
+      y: 0.9
+      width: 0.8
+      height: 3.4
+    - id: shelf_06
+      type: rectangle
+      x: 8.4
+      y: 6.3
+      width: 0.8
+      height: 4.6
+    - id: shelf_07
+      type: rectangle
+      x: 11.6
+      y: 1.6
+      width: 0.9
+      height: 3.5
+    - id: shelf_08
+      type: rectangle
+      x: 11.6
+      y: 7.2
+      width: 0.9
+      height: 3.1
+    - id: packing_table
+      type: rectangle
+      x: 14.1
+      y: 3.7
+      width: 2.5
+      height: 0.75
+    - id: returns_table
+      type: rectangle
+      x: 1.0
+      y: 5.5
+      width: 2.2
+      height: 0.75
+
+robots:
+  - id: robot_1
+    radius: 0.28
+    wheelbase: 0.7
+    max_speed: 1.15
+    max_steering_angle: 0.6
+    start: [0.9, 0.9, 0.0]
+    goal: [16.7, 9.5, 0.0]
+  - id: robot_2
+    radius: 0.28
+    wheelbase: 0.7
+    max_speed: 1.15
+    max_steering_angle: 0.6
+    start: [0.9, 10.8, 0.0]
+    goal: [16.7, 2.4, 0.0]
+  - id: robot_3
+    radius: 0.28
+    wheelbase: 0.7
+    max_speed: 1.15
+    max_steering_angle: 0.6
+    start: [17.1, 0.9, 3.14159]
+    goal: [1.5, 10.4, 3.14159]
+  - id: robot_4
+    radius: 0.28
+    wheelbase: 0.7
+    max_speed: 1.15
+    max_steering_angle: 0.6
+    start: [17.1, 10.8, 3.14159]
+    goal: [1.5, 1.3, 3.14159]
+  - id: robot_5
+    radius: 0.28
+    wheelbase: 0.7
+    max_speed: 1.15
+    max_steering_angle: 0.6
+    start: [0.9, 4.5, 0.0]
+    goal: [16.9, 4.6, 0.0]
+  - id: robot_6
+    radius: 0.28
+    wheelbase: 0.7
+    max_speed: 1.15
+    max_steering_angle: 0.6
+    start: [16.9, 7.6, 3.14159]
+    goal: [0.9, 7.4, 3.14159]
+  - id: robot_7
+    radius: 0.28
+    wheelbase: 0.7
+    max_speed: 1.15
+    max_steering_angle: 0.6
+    start: [4.4, 0.9, 1.5708]
+    goal: [12.3, 10.4, 1.5708]
+  - id: robot_8
+    radius: 0.28
+    wheelbase: 0.7
+    max_speed: 1.15
+    max_steering_angle: 0.6
+    start: [13.7, 10.9, -1.5708]
+    goal: [4.8, 1.2, -1.5708]
+
+dynamic_obstacles:
+  - id: pedestrian_1
+    radius: 0.24
+    trajectory:
+      - [0.0, 3.8, 6.0]
+      - [3.0, 6.8, 7.0]
+      - [7.0, 10.5, 5.2]
+      - [11.0, 14.5, 6.6]
+      - [18.0, 16.5, 4.9]
+  - id: pedestrian_2
+    radius: 0.24
+    trajectory:
+      - [0.0, 14.7, 2.3]
+      - [4.0, 12.6, 3.1]
+      - [8.0, 9.3, 2.2]
+      - [13.0, 5.3, 3.4]
+      - [18.0, 2.0, 2.6]
+  - id: pedestrian_3
+    radius: 0.24
+    trajectory:
+      - [0.0, 6.8, 10.6]
+      - [4.0, 7.6, 8.8]
+      - [8.0, 6.9, 6.0]
+      - [12.0, 7.8, 3.7]
+      - [18.0, 6.7, 1.3]
+  - id: pedestrian_4
+    radius: 0.24
+    trajectory:
+      - [0.0, 15.6, 9.7]
+      - [3.5, 13.6, 8.8]
+      - [7.5, 15.0, 6.2]
+      - [12.5, 12.7, 4.7]
+      - [18.0, 15.4, 2.2]
