@@ -165,7 +165,7 @@ def plan_demo_paths(scenario: ScenarioConfig) -> dict[str, list[ContinuousPose]]
     planner = KinodynamicAStarPlanner(
         collision_checker=collision_checker,
         dt=scenario.simulation.dt,
-        theta_bins=16,
+        theta_bins=32,
         step_distance=0.5,
         goal_tolerance=0.65,
         max_time_steps=int(scenario.simulation.horizon / scenario.simulation.dt),

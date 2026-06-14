@@ -19,7 +19,6 @@ from warehouse_planning.evaluation.metrics import evaluate_multi_robot_plan
 from warehouse_planning.maps.warehouse_map import RectangleObstacle, WarehouseMap
 from warehouse_planning.models.dynamic_obstacle import DynamicObstacle
 from warehouse_planning.models.robot import Robot, RobotSpec, RobotState
-from warehouse_planning.planning.cbs import CBSPlanner
 from warehouse_planning.planning.collision import CollisionChecker
 from warehouse_planning.planning.kinodynamic_astar import KinodynamicAStarPlanner
 from warehouse_planning.planning.prioritized import (
@@ -67,15 +66,9 @@ def build_benchmark_methods(risk_weight: float = 8.0) -> list[BenchmarkMethod]:
             lambda scenario: PrioritizedPlanner(_base_planner(scenario, risk_weight=0.0)),
         ),
         BenchmarkMethod(
-            "CBS-style Planner",
-            lambda scenario: CBSPlanner(
-                PrioritizedPlanner(_base_planner(scenario, risk_weight=0.0))
-            ),
-        ),
-        BenchmarkMethod(
-            "Proposed risk-aware CBS-style Planner",
-            lambda scenario: CBSPlanner(
-                PrioritizedPlanner(_base_planner(scenario, risk_weight=risk_weight))
+            "Risk-aware Prioritized Planning",
+            lambda scenario: PrioritizedPlanner(
+                _base_planner(scenario, risk_weight=risk_weight)
             ),
         ),
     ]

@@ -18,8 +18,8 @@ def test_clean_demo_config_has_expected_scene_size() -> None:
     assert scenario.visualization.style == "clean"
     assert scenario.warehouse.width == 18.0
     assert len(scenario.warehouse.static_obstacles) == 10
-    assert len(scenario.robots) == 8
-    assert len(scenario.dynamic_obstacles) == 4
+    assert len(scenario.robots) == 4
+    assert len(scenario.dynamic_obstacles) == 3
 
 
 def test_interpolate_path_adds_smooth_samples() -> None:
@@ -53,6 +53,17 @@ def test_clean_demo_robot_paths_are_priority_scheduled() -> None:
             clearance_margin=0.12,
         )
         scheduled[robot.id] = paths[robot.id]
+
+
+def test_clean_demo_robot_paths_avoid_static_obstacles() -> None:
+    scenario = load_scenario_config(Path("configs/warehouse_clean_demo.yaml"))
+    checker = CollisionChecker(warehouse=scenario.warehouse)
+    paths = plan_and_smooth_demo_paths(scenario)
+
+    for robot in scenario.robots:
+        for x, y, theta, _ in paths[robot.id]:
+            state = RobotState(x, y, theta, robot.radius)
+            assert not checker.collides_with_static_obstacle(state)
 
 
 def test_clean_demo_pedestrians_avoid_obstacles() -> None:

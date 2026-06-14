@@ -225,25 +225,6 @@ class WarehousePlotter:
                 )
             )
 
-    def draw_robot_triangle(
-        self,
-        ax: Axes,
-        x: float,
-        y: float,
-        theta: float,
-        radius: float,
-        color: str,
-        alpha: float = 0.95,
-    ) -> None:
-        """Draw a triangular robot with its front vertex along heading."""
-        length = radius * 2.8
-        width = radius * 2.0
-        local_points = (
-            (length * 0.58, 0.0),
-            (-length * 0.42, width * 0.5),
-            (-length * 0.42, -width * 0.5),
-        )
-
     def draw_robot_rectangle(
         self,
         ax: Axes,
@@ -252,7 +233,7 @@ class WarehousePlotter:
         theta: float,
         radius: float,
         color: str,
-        alpha: float = 0.96,
+        alpha: float = 0.95,
     ) -> None:
         """Draw an oriented rectangular robot with a clear front direction."""
         length = radius * 3.1
@@ -291,23 +272,6 @@ class WarehousePlotter:
                 zorder=11,
             )
         )
-        points = []
-        for local_x, local_y in local_points:
-            world_x = x + local_x * cos(theta) - local_y * sin(theta)
-            world_y = y + local_x * sin(theta) + local_y * cos(theta)
-            points.append((world_x, world_y))
-
-        ax.add_patch(
-            Polygon(
-                points,
-                closed=True,
-                facecolor=color,
-                edgecolor="white",
-                linewidth=1.0,
-                alpha=alpha,
-                zorder=10,
-            )
-        )
 
     def draw_robot_motion(
         self,
@@ -318,7 +282,7 @@ class WarehousePlotter:
         radius: float,
         future_horizon: float = 1.8,
     ) -> None:
-        """Draw robot history, current triangular body, and predicted future path."""
+        """Draw robot history, current body, and predicted future path."""
         smooth_path = display_path(path)
         pose = pose_at_time(smooth_path, time)
         if pose is None:

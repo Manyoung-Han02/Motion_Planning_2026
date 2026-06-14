@@ -13,22 +13,6 @@ from warehouse_planning.planning.collision import CollisionChecker
 ContinuousPose = tuple[float, float, float, float]
 
 
-@dataclass(frozen=True)
-class TimedState:
-    """Robot pose annotated with continuous time."""
-
-    state: RobotState
-    time: float
-
-
-@dataclass(frozen=True)
-class PlannedPath:
-    """Container for a single robot trajectory."""
-
-    robot_id: str
-    states: tuple[TimedState, ...]
-
-
 @dataclass(frozen=True, order=True)
 class DiscreteState:
     """Grid-time state used by kinodynamic A*."""
@@ -359,7 +343,7 @@ class KinodynamicAStarPlanner:
         start_x, start_y, start_theta, start_t = self._discrete_to_pose(current, robot)
         end_x, end_y, end_theta, end_t = self._discrete_to_pose(neighbor, robot)
         distance = hypot(end_x - start_x, end_y - start_y)
-        sample_spacing = max(self.collision_checker.warehouse.resolution * 0.5, 1e-6)
+        sample_spacing = max(self.collision_checker.warehouse.resolution * 0.25, 1e-6)
         sample_count = max(1, int(distance / sample_spacing))
 
         for sample_index in range(sample_count + 1):
@@ -404,7 +388,7 @@ class KinodynamicAStarPlanner:
         start_x, start_y, start_theta, start_t = self._discrete_to_pose(current, robot)
         end_x, end_y, end_theta, end_t = self._discrete_to_pose(neighbor, robot)
         distance = hypot(end_x - start_x, end_y - start_y)
-        sample_spacing = max(self.collision_checker.warehouse.resolution * 0.5, 1e-6)
+        sample_spacing = max(self.collision_checker.warehouse.resolution * 0.25, 1e-6)
         sample_count = max(1, int(distance / sample_spacing))
         total_risk = 0.0
 
