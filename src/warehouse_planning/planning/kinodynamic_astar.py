@@ -48,12 +48,15 @@ class ReservationTable:
         collision_checker: CollisionChecker,
         dt: float,
         max_time_steps: int,
+        cell_padding: int = 0,
     ) -> "ReservationTable":
         """Build reservations from planned robot paths.
 
         Vertex key format is ``(time_index, row, col)``. Edge key format is
         ``(time_index, from_row, from_col, to_row, to_col)``.
         """
+        if cell_padding < 0:
+            raise ValueError("cell_padding must be non-negative")
         vertices: set[tuple[int, int, int]] = set()
         edges: set[tuple[int, int, int, int, int]] = set()
         for path in paths.values():
@@ -64,7 +67,15 @@ class ReservationTable:
                 max_time_steps,
             )
             for time_index, row, col in indexed_cells:
-                vertices.add((time_index, row, col))
+                vertices.update(
+                    cls._padded_vertices(
+                        time_index,
+                        row,
+                        col,
+                        cell_padding,
+                        collision_checker,
+                    )
+                )
             for previous, current in zip(indexed_cells, indexed_cells[1:]):
                 previous_time, previous_row, previous_col = previous
                 _, current_row, current_col = current
@@ -78,6 +89,27 @@ class ReservationTable:
                     )
                 )
         return cls(vertices=frozenset(vertices), edges=frozenset(edges))
+
+    @staticmethod
+    def _padded_vertices(
+        time_index: int,
+        row: int,
+        col: int,
+        cell_padding: int,
+        collision_checker: CollisionChecker,
+    ) -> set[tuple[int, int, int]]:
+        """Return reserved cells around an occupied grid cell."""
+        vertices: set[tuple[int, int, int]] = set()
+        rows, cols = collision_checker.warehouse.shape
+        max_row = rows - 1
+        max_col = cols - 1
+        for row_offset in range(-cell_padding, cell_padding + 1):
+            for col_offset in range(-cell_padding, cell_padding + 1):
+                padded_row = row + row_offset
+                padded_col = col + col_offset
+                if 0 <= padded_row <= max_row and 0 <= padded_col <= max_col:
+                    vertices.add((time_index, padded_row, padded_col))
+        return vertices
 
     @staticmethod
     def _path_to_indexed_cells(
@@ -141,6 +173,10 @@ class KinodynamicAStarPlanner:
     risk_weight: float = 0.0
     safety_distance: float = 1.0
     risk_sigma: float | None = None
+    risk_time_offsets: tuple[float, ...] = (0.0,)
+    risk_time_decay: float = 0.55
+    heuristic_weight: float = 1.0
+    reservation_padding: int = 0
     time_origin: float = 0.0
     allow_partial: bool = False
     reservation_table: ReservationTable | None = None
@@ -154,8 +190,14 @@ class KinodynamicAStarPlanner:
             raise ValueError("dt must be positive")
         if self.risk_weight < 0.0:
             raise ValueError("risk_weight must be non-negative")
+        if self.heuristic_weight <= 0.0:
+            raise ValueError("heuristic_weight must be positive")
+        if self.reservation_padding < 0:
+            raise ValueError("reservation_padding must be non-negative")
         if self.safety_distance <= 0.0:
             raise ValueError("safety_distance must be positive")
+        if self.risk_time_decay < 0.0:
+            raise ValueError("risk_time_decay must be non-negative")
         if self.time_origin < 0.0:
             raise ValueError("time_origin must be non-negative")
 
@@ -209,7 +251,10 @@ class KinodynamicAStarPlanner:
 
         open_heap: list[tuple[float, int, DiscreteState]] = []
         tie_breaker = count()
-        heappush(open_heap, (self._heuristic(robot.start.x, robot.start.y, robot), 0, start))
+        heappush(
+            open_heap,
+            (self.heuristic_weight * self._heuristic(robot.start.x, robot.start.y, robot), 0, start),
+        )
 
         came_from: dict[DiscreteState, DiscreteState | None] = {start: None}
         cost_so_far: dict[DiscreteState, float] = {start: 0.0}
@@ -249,7 +294,7 @@ class KinodynamicAStarPlanner:
                 cost_so_far[neighbor] = new_cost
                 came_from[neighbor] = current
                 nx, ny, _, _ = self._discrete_to_pose(neighbor, robot)
-                priority = new_cost + self._heuristic(nx, ny, robot)
+                priority = new_cost + self.heuristic_weight * self._heuristic(nx, ny, robot)
                 heappush(open_heap, (priority, next(tie_breaker), neighbor))
 
         if self.allow_partial and best_state != start:
@@ -410,15 +455,17 @@ class KinodynamicAStarPlanner:
 
         cost = 0.0
         for obstacle in self.collision_checker.dynamic_obstacles:
-            ox, oy = obstacle.predicted_position(time)
-            center_distance = hypot(state.x - ox, state.y - oy)
-            collision_distance = state.radius + obstacle.radius
-            clearance = center_distance - collision_distance
-            if clearance <= 0.0:
-                return float("inf")
-            if clearance <= self.safety_distance:
-                gaussian = self._gaussian_risk(clearance)
-                cost += self.risk_weight * gaussian
+            for offset in self.risk_time_offsets:
+                ox, oy = obstacle.predicted_position(max(0.0, time + offset))
+                center_distance = hypot(state.x - ox, state.y - oy)
+                collision_distance = state.radius + obstacle.radius
+                clearance = center_distance - collision_distance
+                if clearance <= 0.0:
+                    return float("inf")
+                if clearance <= self.safety_distance:
+                    gaussian = self._gaussian_risk(clearance)
+                    temporal_weight = 1.0 if abs(offset) <= 1e-9 else self.risk_time_decay
+                    cost += self.risk_weight * temporal_weight * gaussian
         return cost
 
     def _gaussian_risk(self, clearance: float) -> float:

@@ -22,6 +22,7 @@ from warehouse_planning.models.robot import Robot, RobotSpec, RobotState
 from warehouse_planning.planning.collision import CollisionChecker
 from warehouse_planning.planning.kinodynamic_astar import KinodynamicAStarPlanner
 from warehouse_planning.planning.prioritized import (
+    ConcurrentLocalWaitPlanner,
     IndependentPlanner,
     MultiRobotPlanResult,
     PrioritizedPlanner,
@@ -69,6 +70,16 @@ def build_benchmark_methods(risk_weight: float = 8.0) -> list[BenchmarkMethod]:
             "Risk-aware Prioritized Planning",
             lambda scenario: PrioritizedPlanner(
                 _base_planner(scenario, risk_weight=risk_weight)
+            ),
+        ),
+        BenchmarkMethod(
+            "Proposed Concurrent Local Wait",
+            lambda scenario: ConcurrentLocalWaitPlanner(
+                _base_planner(scenario, risk_weight=risk_weight),
+                time_step=scenario.simulation.dt,
+                wait_step=0.4,
+                max_total_wait=4.0,
+                clearance_margin=0.14,
             ),
         ),
     ]
@@ -167,6 +178,12 @@ def _base_planner(
         risk_weight=risk_weight,
         safety_distance=1.0,
         risk_sigma=0.5,
+        risk_time_offsets=(-0.4, 0.0, 0.4),
+        risk_time_decay=0.5,
+        wait_cost=2.0 if risk_weight > 0.0 else 0.5,
+        heuristic_weight=2.0 if risk_weight > 0.0 else 1.0,
+        reservation_padding=1 if risk_weight > 0.0 else 0,
+        allow_partial=risk_weight > 0.0,
     )
 
 

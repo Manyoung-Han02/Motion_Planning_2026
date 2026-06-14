@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from math import atan2, cos, hypot, sin
+from dataclasses import dataclass, replace
+from math import atan2, cos, hypot, pi, sin
+import os
 from pathlib import Path
+
+os.environ.setdefault("MPLCONFIGDIR", str(Path.cwd() / ".matplotlib"))
 
 import imageio.v2 as imageio
 import matplotlib.pyplot as plt
@@ -20,6 +23,8 @@ from warehouse_planning.planning.kinodynamic_astar import (
     ContinuousPose,
     KinodynamicAStarPlanner,
 )
+from warehouse_planning.planning.coordination import coordinate_local_waits
+from warehouse_planning.planning.prioritized import PrioritizedPlanner
 from warehouse_planning.visualization.plotting import ROBOT_COLORS, WarehousePlotter
 from warehouse_planning.visualization.smoothing import (
     interpolate_path,
@@ -35,6 +40,9 @@ class CleanDemoOutputs:
     risk_field_png: Path
     mp4_path: Path | None
     gif_path: Path | None
+
+
+_SMOOTH_PATH_CACHE: dict[tuple[object, ...], dict[str, list[ContinuousPose]]] = {}
 
 
 def run_clean_multi_robot_demo(
@@ -151,26 +159,118 @@ def plan_and_smooth_demo_paths(
     samples_per_segment: int = 10,
 ) -> dict[str, list[ContinuousPose]]:
     """Plan coarse paths with A* and smooth them for visualization."""
+    cache_key = demo_path_cache_key(scenario, samples_per_segment)
+    if cache_key in _SMOOTH_PATH_CACHE:
+        return copy_paths(_SMOOTH_PATH_CACHE[cache_key])
+
     coarse_paths = plan_demo_paths(scenario)
     smooth_paths = {
         robot_id: interpolate_path(path, samples_per_segment=samples_per_segment)
         for robot_id, path in coarse_paths.items()
     }
-    return apply_priority_timing_avoidance(smooth_paths, scenario)
+    coordinated_paths = coordinate_local_waits(
+        smooth_paths,
+        scenario.robots,
+        time_step=0.2,
+        wait_step=0.4,
+        max_total_wait=9.0,
+        clearance_margin=0.14,
+    )
+    _SMOOTH_PATH_CACHE[cache_key] = copy_paths(coordinated_paths)
+    return coordinated_paths
+
+
+def demo_path_cache_key(
+    scenario: ScenarioConfig,
+    samples_per_segment: int,
+) -> tuple[object, ...]:
+    """Return a stable cache key for deterministic clean-demo path planning."""
+    obstacles = tuple(
+        (
+            obstacle.id,
+            obstacle.x,
+            obstacle.y,
+            obstacle.width,
+            obstacle.height,
+        )
+        for obstacle in scenario.warehouse.static_obstacles
+    )
+    robots = tuple(
+        (
+            robot.id,
+            robot.radius,
+            robot.start.x,
+            robot.start.y,
+            robot.start.theta,
+            robot.goal.x,
+            robot.goal.y,
+            robot.goal.theta,
+        )
+        for robot in scenario.robots
+    )
+    pedestrians = tuple(
+        (
+            pedestrian.id,
+            pedestrian.radius,
+            pedestrian.trajectory,
+        )
+        for pedestrian in scenario.dynamic_obstacles
+    )
+    return (
+        samples_per_segment,
+        scenario.simulation.dt,
+        scenario.simulation.horizon,
+        scenario.warehouse.width,
+        scenario.warehouse.height,
+        scenario.warehouse.resolution,
+        obstacles,
+        robots,
+        pedestrians,
+    )
+
+
+def copy_paths(
+    paths: dict[str, list[ContinuousPose]],
+) -> dict[str, list[ContinuousPose]]:
+    """Return shallow-copied path containers for cache isolation."""
+    return {robot_id: list(path) for robot_id, path in paths.items()}
 
 
 def plan_demo_paths(scenario: ScenarioConfig) -> dict[str, list[ContinuousPose]]:
-    """Plan one coarse path per robot using the existing kinodynamic A* pipeline."""
-    collision_checker = CollisionChecker(warehouse=scenario.warehouse)
+    """Plan coordinated, pedestrian-risk-aware paths for all demo robots."""
+    collision_checker = CollisionChecker(
+        warehouse=scenario.warehouse,
+        dynamic_obstacles=scenario.dynamic_obstacles,
+    )
     planner = KinodynamicAStarPlanner(
         collision_checker=collision_checker,
         dt=scenario.simulation.dt,
-        theta_bins=32,
+        theta_bins=16,
         step_distance=0.5,
         goal_tolerance=0.65,
-        max_time_steps=int(scenario.simulation.horizon / scenario.simulation.dt),
-        risk_weight=0.0,
+        max_time_steps=min(70, int(scenario.simulation.horizon / scenario.simulation.dt)),
+        risk_weight=8.0,
+        safety_distance=2.4,
+        risk_sigma=1.0,
+        risk_time_offsets=(-0.6, 0.0, 0.6, 1.2),
+        risk_time_decay=0.55,
+        wait_cost=3.0,
+        heuristic_weight=3.0,
+        reservation_padding=3,
+        allow_partial=True,
     )
+    planning_clearance = 0.12
+    planning_robots = tuple(
+        replace(
+            robot,
+            start=replace(robot.start, radius=robot.radius + planning_clearance),
+            goal=replace(robot.goal, radius=robot.radius + planning_clearance),
+        )
+        for robot in scenario.robots
+    )
+    result = PrioritizedPlanner(planner).plan(planning_robots)
+    if result.paths and all(robot.id in result.paths for robot in scenario.robots):
+        return result.paths
 
     paths: dict[str, list[ContinuousPose]] = {}
     for robot in scenario.robots:
@@ -221,45 +321,6 @@ def make_aisle_fallback_path(
     return poses
 
 
-def apply_priority_timing_avoidance(
-    paths: dict[str, list[ContinuousPose]],
-    scenario: ScenarioConfig,
-    time_step: float = 0.1,
-    delay_step: float = 0.6,
-    max_delay: float = 18.0,
-    clearance_margin: float = 0.16,
-) -> dict[str, list[ContinuousPose]]:
-    """Delay lower-priority robots until they do not overlap earlier robots."""
-    scheduled: dict[str, list[ContinuousPose]] = {}
-    robot_by_id = {robot.id: robot for robot in scenario.robots}
-    for robot in scenario.robots:
-        base_path = paths.get(robot.id, [])
-        delay = 0.0
-        candidate = shift_path_time(base_path, delay)
-        while delay <= max_delay:
-            candidate = shift_path_time(base_path, delay)
-            if not path_conflicts_with_scheduled(
-                candidate,
-                robot,
-                scheduled,
-                robot_by_id,
-                time_step=time_step,
-                clearance_margin=clearance_margin,
-            ):
-                break
-            delay += delay_step
-        scheduled[robot.id] = candidate
-    return scheduled
-
-
-def shift_path_time(
-    path: list[ContinuousPose],
-    delay: float,
-) -> list[ContinuousPose]:
-    """Shift a path in time while preserving its geometry."""
-    return [(x, y, theta, t + delay) for x, y, theta, t in path]
-
-
 def path_conflicts_with_scheduled(
     candidate_path: list[ContinuousPose],
     robot: Robot,
@@ -295,7 +356,7 @@ def generate_pedestrian_paths(
     duration: float,
     dt: float = 0.1,
 ) -> dict[str, list[ContinuousPose]]:
-    """Generate obstacle-aware pedestrian motion with deterministic bouncing."""
+    """Generate smooth obstacle-aware pedestrian motion."""
     checker = CollisionChecker(warehouse=scenario.warehouse)
     pedestrian_paths: dict[str, list[ContinuousPose]] = {}
     for index, pedestrian in enumerate(scenario.dynamic_obstacles):
@@ -346,21 +407,20 @@ def _rollout_pedestrian(
             target_index = (target_index + 1) % len(waypoints)
             target = waypoints[target_index]
 
-        base_heading = atan2(target[1] - y, target[0] - x)
-        wobble = 0.45 * sin(0.8 * time + index * 1.7) + 0.18 * sin(1.9 * time + index)
-        heading = base_heading + wobble
-        dx = speed * cos(heading) * dt
-        dy = speed * sin(heading) * dt
-        next_x, next_y, heading = _valid_pedestrian_step(
+        target_heading = atan2(target[1] - y, target[0] - x)
+        preferred_heading = target_heading + 0.16 * sin(0.8 * time + index * 1.7)
+        next_x, next_y, selected_heading = _valid_pedestrian_step(
             x,
             y,
-            dx,
-            dy,
+            preferred_heading,
             heading,
             pedestrian,
             checker,
             scenario,
+            target,
+            step_distance=speed * dt,
         )
+        heading += 0.45 * _wrap_angle(selected_heading - heading)
         x, y = next_x, next_y
         path.append((x, y, heading, time))
     return path
@@ -369,38 +429,73 @@ def _rollout_pedestrian(
 def _valid_pedestrian_step(
     x: float,
     y: float,
-    dx: float,
-    dy: float,
-    heading: float,
+    preferred_heading: float,
+    current_heading: float,
     pedestrian: DynamicObstacle,
     checker: CollisionChecker,
     scenario: ScenarioConfig,
+    target: tuple[float, float],
+    step_distance: float,
 ) -> tuple[float, float, float]:
-    """Accept, bounce, or stop a pedestrian step before obstacle collision."""
-    candidates = (
-        (dx, dy, heading),
-        (-dx, dy, atan2(dy, -dx)),
-        (dx, -dy, atan2(-dy, dx)),
-        (-dx, -dy, atan2(-dy, -dx)),
-        (dy, -dx, atan2(-dx, dy)),
-        (-dy, dx, atan2(dx, -dy)),
+    """Choose a smooth valid step around static obstacles."""
+    best_candidate: tuple[float, float, float] | None = None
+    best_score = -float("inf")
+    previous_distance = hypot(target[0] - x, target[1] - y)
+    angle_offsets = (
+        0.0,
+        pi / 12.0,
+        -pi / 12.0,
+        pi / 6.0,
+        -pi / 6.0,
+        pi / 4.0,
+        -pi / 4.0,
+        pi / 3.0,
+        -pi / 3.0,
+        pi / 2.0,
+        -pi / 2.0,
+        2.0 * pi / 3.0,
+        -2.0 * pi / 3.0,
     )
-    for candidate_dx, candidate_dy, candidate_heading in candidates:
-        candidate_x = x + candidate_dx
-        candidate_y = y + candidate_dy
-        state = RobotState(candidate_x, candidate_y, candidate_heading, pedestrian.radius)
-        if not checker.collides_with_static_obstacle(state):
-            return (candidate_x, candidate_y, candidate_heading)
 
-    clamped_x = min(
-        scenario.warehouse.width - pedestrian.radius,
-        max(pedestrian.radius, x),
-    )
-    clamped_y = min(
-        scenario.warehouse.height - pedestrian.radius,
-        max(pedestrian.radius, y),
-    )
-    return (clamped_x, clamped_y, heading)
+    for step_scale in (1.0, 0.7, 0.45):
+        step = step_distance * step_scale
+        for offset in angle_offsets:
+            candidate_heading = preferred_heading + offset
+            candidate_x = x + step * cos(candidate_heading)
+            candidate_y = y + step * sin(candidate_heading)
+            state = RobotState(
+                candidate_x,
+                candidate_y,
+                candidate_heading,
+                pedestrian.radius,
+            )
+            if checker.collides_with_static_obstacle(state):
+                continue
+            lookahead_state = RobotState(
+                candidate_x + 0.6 * step * cos(candidate_heading),
+                candidate_y + 0.6 * step * sin(candidate_heading),
+                candidate_heading,
+                pedestrian.radius,
+            )
+            if checker.collides_with_static_obstacle(lookahead_state):
+                continue
+
+            progress = previous_distance - hypot(target[0] - candidate_x, target[1] - candidate_y)
+            clearance = scenario.warehouse.distance_to_nearest_obstacle(candidate_x, candidate_y)
+            turn_amount = abs(_wrap_angle(candidate_heading - current_heading))
+            score = 4.0 * progress + 0.7 * clearance - 0.2 * turn_amount
+            if score > best_score:
+                best_score = score
+                best_candidate = (candidate_x, candidate_y, candidate_heading)
+        if best_candidate is not None:
+            return best_candidate
+
+    return (x, y, current_heading)
+
+
+def _wrap_angle(angle: float) -> float:
+    """Wrap an angle to [-pi, pi)."""
+    return (angle + pi) % (2.0 * pi) - pi
 
 
 def draw_clean_demo_frame(

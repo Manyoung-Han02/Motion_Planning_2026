@@ -10,7 +10,7 @@ def test_run_benchmark_saves_csv_and_bar_plots(tmp_path: Path) -> None:
 
     csv_path = tmp_path / "benchmark_results.csv"
     assert csv_path.exists()
-    assert len(frame) == 12
+    assert len(frame) == 16
     assert set(frame["scenario"]) == {
         "narrow_aisle_crossing",
         "human_crossing_path",
@@ -21,6 +21,7 @@ def test_run_benchmark_saves_csv_and_bar_plots(tmp_path: Path) -> None:
         "Independent A*",
         "Prioritized Planning",
         "Risk-aware Prioritized Planning",
+        "Proposed Concurrent Local Wait",
     }
     assert (tmp_path / "success_rate.png").exists()
     assert (tmp_path / "computation_time.png").exists()
