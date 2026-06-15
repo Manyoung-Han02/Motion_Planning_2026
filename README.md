@@ -14,8 +14,6 @@ regions.
   <img src="./results/demo_video.gif" width="850" alt="Warehouse planning demo animation">
 </p>
 
-[Open MP4 demo video](./results/demo_video.mp4)
-
 ## Risk Heatmap Figure
 
 <p align="center">
@@ -52,7 +50,6 @@ In short:
 - **Human-risk field:** predicted pedestrian positions create soft risk costs.
 - **Robot coordination:** planned robot paths reserve space-time cells.
 - **Windowed replanning:** near-future conflicts are repaired locally.
-- **Smoothing:** paths are rounded for clean presentation figures and videos.
 
 ## Installation
 
