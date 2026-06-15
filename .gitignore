@@ -3,5 +3,9 @@ __pycache__/
 .pytest_cache/
 .matplotlib/
 outputs/
-results/
+results/*
+!results/demo_video.mp4
+!results/0615_results/
+results/0615_results/*
+!results/0615_results/risk_heatmap_blue_robot_static_pedestrians.png
 *.pyc
