@@ -10,9 +10,11 @@ regions.
 
 ## Demo Video
 
-<video src="./results/demo_video.mp4" controls width="100%"></video>
+<p align="center">
+  <img src="./results/demo_video.gif" width="850" alt="Warehouse planning demo animation">
+</p>
 
-[Open demo video](./results/demo_video.mp4)
+[Open MP4 demo video](./results/demo_video.mp4)
 
 ## Risk Heatmap Figure
 
