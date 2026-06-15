@@ -1,47 +1,115 @@
-# Multi-Robot Warehouse Motion Planning
+# Dynamic Obstacle-Aware Planning for Nonholonomic Multi-Robot Systems
 
-This project simulates dynamic-obstacle-aware warehouse motion planning for a
-small fleet of nonholonomic robots. The final demo uses 4 robots, 3 pedestrian
-obstacles, static shelf geometry, risk-aware kinodynamic planning, inflated
-space-time reservations, and concurrent local-wait coordination.
+**Author:** Manyoung Han  
+**Class:** Motion planning and decision making for autonomous system (H.J.Kim.)
 
-The robot paths are planned on a kinodynamic lattice, then rounded with a
-Chaikin-style path smoother and dense time sampling so the rendered motion
-looks closer to a Dubins-car-like vehicle than a grid polyline.
-Pedestrian predictions are treated as soft Gaussian risk fields over a short
-time tube, so the risk-aware planner visibly bends away from human motion.
+This repository contains a dynamic-obstacle-aware multi-robot warehouse planning
+project. The system plans smooth nonholonomic trajectories for multiple robots
+while avoiding shelves, walls, other robots, and moving pedestrians.
 
-## File Structure
+## Demo Video and Figures
+
+### Demo Video
+
+[Watch the warehouse planning demo](results/demo_video.mp4)
+
+### Risk Heatmap with Human-Aware Path Ablation
+
+![Risk heatmap with blue robot path ablation](results/0615_results/risk_heatmap_blue_robot_static_pedestrians.png)
+
+This figure shows how the blue robot path changes as the human-risk weight
+increases. The heatmap represents pedestrian risk around static human positions,
+and darker blue paths correspond to stronger human-aware planning.
+
+### Time-Gradient Trajectory Overview
+
+![Time-gradient trajectory overview](results/0615_results/trajectory_gradient_overview.png)
+
+This figure visualizes four robot trajectories and three pedestrian trajectories.
+Each path becomes darker over time, showing the motion progression from start to
+finish.
+
+### Algorithm Comparison
+
+![Algorithm comparison plot](results/0615_results/algorithm_comparison.png)
+
+The comparison summarizes distance, makespan, computation time, robot collision
+counts, and human near-miss counts across baseline planners and the proposed
+method.
+
+## Project Overview
+
+The goal of this project is to study practical motion planning for warehouse
+robot fleets operating near dynamic pedestrians. In a warehouse environment,
+robots should not only find short paths, but also:
+
+- avoid static obstacles such as shelves and walls,
+- avoid collisions with other robots in space-time,
+- maintain safe clearance from pedestrians,
+- move smoothly with nonholonomic, car-like motion,
+- coordinate multiple robots so that they move concurrently when possible.
+
+The final scenario uses:
+
+- 4 robots,
+- 3 pedestrians,
+- static shelf-like warehouse obstacles,
+- nonholonomic kinodynamic lattice planning,
+- time-expanded robot reservations,
+- dynamic pedestrian risk fields,
+- bounded windowed conflict replanning.
+
+Current paper-style results are saved under:
 
 ```text
-configs/
-  warehouse_clean_demo.yaml       Final 4-robot, 3-pedestrian scenario
-src/warehouse_planning/
-  config.py                       YAML loading into typed scenario objects
-  maps/warehouse_map.py           Static warehouse geometry and occupancy grid
-  models/robot.py                 Robot state, controls, and bicycle step model
-  models/dynamic_obstacle.py      Time-indexed pedestrian obstacle model
-  planning/collision.py           Static and dynamic collision checks
-  planning/kinodynamic_astar.py   Single-robot kinodynamic A* lattice planner
-  planning/coordination.py        Local-wait coordination utilities
-  planning/prioritized.py         Independent, prioritized, and proposed planners
-  simulation/simulator.py         Receding-horizon simulation/export utilities
-  visualization/smoothing.py      Larger-radius path rounding and interpolation
-  visualization/plotting.py       Matplotlib warehouse, robot, and path drawing
-  visualization/clean_demo.py     Final presentation demo pipeline
-  evaluation/metrics.py           Path and multi-robot metrics
-  evaluation/benchmark.py         Benchmark runner and plots
-scripts/
-  generate_paper_figures.py       Publication-style figures and demo video
-tests/                            Pytest coverage for planning and visualization
-main.py                           Command-line entry point
-requirements.txt                  Python dependencies
-pytest.ini                        Test configuration
+results/0615_results/
 ```
 
-Generated files are written to `results/` and are ignored by Git.
+## Algorithm / Method Summary
 
-## Setup
+The implemented planner is a practical hybrid method rather than a full optimal
+joint kinodynamic optimizer. It combines single-robot kinodynamic planning with
+multi-robot conflict repair and pedestrian-aware risk costs.
+
+### 1. Nonholonomic Kinodynamic Lattice Planning
+
+Each robot is planned in a hybrid state space containing position, heading bin,
+and time index. The planner expands motion primitives such as forward, left,
+right, and wait. This produces paths that respect finite turning behavior instead
+of purely holonomic grid motion.
+
+### 2. Pedestrian Risk Field
+
+Pedestrians are modeled as dynamic circular obstacles. Their short-horizon
+positions are converted into Gaussian risk fields. Robot paths receive higher
+cost when they pass close to predicted pedestrian locations, so the planner
+prefers routes with larger human clearance.
+
+### 3. Time-Expanded Robot Reservations
+
+Previously planned robot trajectories reserve occupied cells over time. Later
+robots avoid these reserved space-time cells, which reduces robot-robot and
+edge-swap conflicts.
+
+### 4. Bounded Windowed Conflict Replanning
+
+After an initial prioritized solution is generated, the planner scans a finite
+future window for robot-robot conflicts. When a conflict is found, only the
+affected lower-priority robot suffix is replanned while the other robot paths are
+kept as reservations. This improves coordination without the cost of full CBS or
+full joint-state optimization.
+
+### 5. Smooth Visualization
+
+The planned lattice paths are rounded with Chaikin-style smoothing and dense
+time interpolation for presentation-quality videos and figures. Quantitative
+metrics are computed from the timed planner paths, while smoothing is used for
+visualization.
+
+## Installation
+
+The project is written in Python and can be installed with a local virtual
+environment.
 
 ```powershell
 python -m venv .venv
@@ -49,125 +117,157 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Main Commands
-
-Run the default risk-comparison visualization:
+If the virtual environment is already created, activate it with:
 
 ```powershell
-python main.py --no-show
+.\.venv\Scripts\activate
 ```
 
-Run the final clean multi-robot demo and export PNG/MP4 outputs:
+## How to Run
+
+### Run the Main Paper Experiment Suite
+
+```powershell
+python scripts/run_0615_experiments.py
+```
+
+This generates the main experiment outputs in:
+
+```text
+results/0615_results/
+```
+
+Main outputs include:
+
+- `algorithm_comparison.csv`
+- `algorithm_comparison.png`
+- `algorithm_comparison_table.png`
+- `risk_ablation_metrics.csv`
+- `risk_ablation_plot.png`
+- `planning_window_ablation.csv`
+- `planning_window_ablation.png`
+- `scenario_diversity_metrics.csv`
+- `scenario_diversity_plot.png`
+- `trajectory_gradient_overview.png`
+- `risk_heatmap_blue_robot_static_pedestrians.png`
+
+### Generate the Blue-Robot Risk Heatmap Figure
+
+```powershell
+python scripts/generate_blue_robot_static_risk_heatmap.py
+```
+
+Output:
+
+```text
+results/0615_results/risk_heatmap_blue_robot_static_pedestrians.png
+results/0615_results/risk_heatmap_blue_robot_static_pedestrians.pdf
+```
+
+### Generate the Time-Gradient Trajectory Figure
+
+```powershell
+python scripts/generate_trajectory_gradient_image.py
+```
+
+Output:
+
+```text
+results/0615_results/trajectory_gradient_overview.png
+results/0615_results/trajectory_gradient_overview.pdf
+```
+
+### Run the Clean Demo
 
 ```powershell
 python main.py --clean-demo --no-show
 ```
 
-Also export a GIF:
+This creates the presentation-style warehouse demo video in:
 
-```powershell
-python main.py --clean-demo --no-show --save-gif
+```text
+results/multi_robot_demo.mp4
 ```
 
-Run receding-horizon simulation:
-
-```powershell
-python main.py --simulate-receding-horizon --animation results/receding_horizon.gif --no-show
-```
-
-Run benchmark plots and CSV output:
-
-```powershell
-python main.py --benchmark --results-dir results/benchmark --no-show
-```
-
-Generate publication-style paper figures and the presentation video:
+### Generate Paper-Style Figures and Video
 
 ```powershell
 python scripts/generate_paper_figures.py
 ```
 
-Run the final seeded algorithm evaluation:
+Output directory:
+
+```text
+results/paper_figures/
+```
+
+### Run the Final Evaluation Script
 
 ```powershell
 python scripts/run_final_evaluation.py
 ```
 
-Run tests:
+Output directory:
+
+```text
+results/final_evaluation/
+```
+
+### Run Tests
 
 ```powershell
 python -m pytest
 ```
 
-If using the local virtual environment directly:
+or, using the local virtual environment directly:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-## Generated Outputs
+## Repository Structure
 
-The clean demo writes:
+```text
+configs/
+  warehouse_clean_demo.yaml
 
-- `results/clean_map_demo.png`
-- `results/risk_field_demo.png`
-- `results/multi_robot_demo.mp4`
-- `results/multi_robot_demo.gif` when `--save-gif` is used
+src/warehouse_planning/
+  config.py
+  maps/warehouse_map.py
+  models/robot.py
+  models/dynamic_obstacle.py
+  planning/collision.py
+  planning/kinodynamic_astar.py
+  planning/prioritized.py
+  planning/windowed.py
+  simulation/simulator.py
+  visualization/plotting.py
+  visualization/smoothing.py
+  visualization/clean_demo.py
+  evaluation/metrics.py
+  evaluation/benchmark.py
 
-The default visualization writes:
+scripts/
+  run_0615_experiments.py
+  generate_blue_robot_static_risk_heatmap.py
+  generate_trajectory_gradient_image.py
+  generate_paper_figures.py
+  run_final_evaluation.py
+  run_cvpr_experiments.py
 
-- `results/risk_comparison.png`
-- `results/risk_weight_0.png`
-- `results/risk_weight_positive.png`
+tests/
+  test_*.py
 
-The benchmark command writes:
+results/
+  demo_video.mp4
+  multi_robot_demo.mp4
+  0615_results/
+```
 
-- `results/benchmark/benchmark_results.csv`
-- grouped bar plots for success rate, path length, makespan, computation time,
-  robot-robot collisions, and pedestrian near misses
+## Notes
 
-The paper-figure script writes to `results/paper_figures/`:
-
-- `figure1_qualitative_trajectory_overview.{png,pdf}`
-- `figure2_risk_aware_path_comparison.{png,pdf}`
-- `figure3_baseline_metric_comparison.{png,pdf}`
-- `figure3_metric_table.{png,pdf}`
-- `figure3_metric_data.csv`
-- `figure4_pipeline_algorithm.{png,pdf}`
-- `algorithm_pseudocode.{png,pdf}`
-- `algorithm_pseudocode.txt`
-- `demo_video.mp4`
-- `generation_notes.md`
-
-The final evaluation script writes to `results/final_evaluation/`:
-
-- `final_metrics.csv`
-- `final_metrics_table.{png,pdf}`
-- `final_comparison_plot.{png,pdf}`
-- `final_trial_metrics.csv`
-- `final_evaluation_notes.md`
-
-## Motion Model Notes
-
-- The final clean demo uses 16 heading bins, small forward primitives, and
-  Chaikin smoothing to create continuous, larger-radius visual trajectories.
-- Planner transition validation samples at quarter-cell spacing to avoid
-  slipping through shelf corners between coarse states.
-- Dynamic pedestrian risk is evaluated at multiple nearby time offsets, making
-  predicted human motion affect route choice instead of only exact-time
-  collisions.
-- Risk-aware prioritized planning reserves a small inflated grid halo around
-  earlier robot paths.
-- `visualization/smoothing.py` applies open Chaikin corner rounding and dense
-  time sampling. This keeps the path continuous-looking while preserving the
-  planned route shape.
-- `planning/coordination.py` inserts local waits only near sampled space-time
-  conflicts, avoiding artificial start delays when routes are already clear.
-
-## Final Scenario
-
-- Robots: 4
-- Pedestrians: 3
-- Scenario file: `configs/warehouse_clean_demo.yaml`
-- Pedestrian trajectories intentionally cross main robot aisles so human-aware
-  risk has a visible effect in the risk-comparison figure and video.
+The proposed method is designed as a practical research prototype. It is not a
+full optimal CBS/ECBS solver and does not solve full joint kinodynamic
+optimization. Instead, it uses a scalable approximation that combines
+nonholonomic single-robot search, human-risk-aware costs, time-expanded
+reservations, and bounded conflict-window repair.

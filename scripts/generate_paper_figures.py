@@ -32,11 +32,11 @@ from warehouse_planning.evaluation.metrics import evaluate_multi_robot_plan
 from warehouse_planning.planning.collision import CollisionChecker
 from warehouse_planning.planning.kinodynamic_astar import ContinuousPose, KinodynamicAStarPlanner
 from warehouse_planning.planning.prioritized import (
-    ConcurrentLocalWaitPlanner,
     IndependentPlanner,
     MultiRobotPlanResult,
     PrioritizedPlanner,
 )
+from warehouse_planning.planning.windowed import WindowedConflictReplanner
 from warehouse_planning.visualization.clean_demo import (
     generate_pedestrian_paths,
     pedestrian_positions_at_time,
@@ -48,15 +48,15 @@ from warehouse_planning.visualization.smoothing import interpolate_path, path_be
 
 OUTPUT_DIR = PROJECT_ROOT / "results" / "paper_figures"
 SCENARIO_PATH = PROJECT_ROOT / "configs" / "warehouse_clean_demo.yaml"
-PSEUDOCODE_TEXT = """Algorithm: Risk-Aware Concurrent Local-Wait Planner
+PSEUDOCODE_TEXT = """Algorithm: Risk-Aware Windowed Conflict Replanner
 Input: warehouse map M, robots R, pedestrian tracks H, horizon T
 1. Observe current robot poses and pedestrian positions.
 2. Predict pedestrian positions over the local planning horizon.
 3. Build a smooth Gaussian risk field around predicted pedestrians.
 4. Plan kinodynamic nonholonomic paths with A* motion primitives.
 5. Reserve inflated robot footprints for priority-space separation.
-6. Add local waits only when sampled space-time conflicts remain.
-7. Execute the first path segment, append history, and replan at the next cycle.
+6. Scan a bounded future window for robot-robot conflicts.
+7. Replan the lower-priority robot around the conflict region when needed.
 Output: collision-aware smooth robot trajectories
 """
 
@@ -241,11 +241,11 @@ def run_metric_method(
     if planner_kind == "prioritized":
         return PrioritizedPlanner(planner).plan(scenario.robots)
     if planner_kind == "concurrent":
-        return ConcurrentLocalWaitPlanner(
+        return WindowedConflictReplanner(
             planner,
-            time_step=scenario.simulation.dt,
-            wait_step=0.4,
-            max_total_wait=5.0,
+            window_steps=32,
+            repair_iterations=2,
+            lookback_steps=4,
             clearance_margin=0.18,
         ).plan(scenario.robots)
     raise ValueError(f"Unsupported planner kind: {planner_kind}")
@@ -638,7 +638,7 @@ def write_generation_notes(metrics_frame: pd.DataFrame) -> None:
         "- Figures 1, 2, and the video use the final YAML scenario with 4 robots and 3 pedestrians.",
         "- Figure 3 is generated from live project planner runs on the same final demo scenario.",
         "- Independent A*, Prioritized Planning, and Proposed are real runs from the implemented planners.",
-        "- Proposed uses stronger pedestrian risk plus local-wait coordination for concurrent multi-robot execution.",
+        "- Proposed uses stronger pedestrian risk plus bounded windowed conflict replanning over time-expanded reservations.",
         "- The CBS-style column is a transparent proxy using the project's reservation-constrained prioritized planner; a full CBS search tree is not implemented in this repository.",
         "- Metric CSV values are saved in figure3_metric_data.csv.",
         "",

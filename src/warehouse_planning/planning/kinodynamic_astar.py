@@ -49,14 +49,19 @@ class ReservationTable:
         dt: float,
         max_time_steps: int,
         cell_padding: int = 0,
+        time_origin: float = 0.0,
     ) -> "ReservationTable":
         """Build reservations from planned robot paths.
 
         Vertex key format is ``(time_index, row, col)``. Edge key format is
-        ``(time_index, from_row, from_col, to_row, to_col)``.
+        ``(time_index, from_row, from_col, to_row, to_col)``. ``time_origin``
+        lets rolling-horizon planners build reservations in the same local
+        time frame used by the lattice search.
         """
         if cell_padding < 0:
             raise ValueError("cell_padding must be non-negative")
+        if time_origin < 0.0:
+            raise ValueError("time_origin must be non-negative")
         vertices: set[tuple[int, int, int]] = set()
         edges: set[tuple[int, int, int, int, int]] = set()
         for path in paths.values():
@@ -65,6 +70,7 @@ class ReservationTable:
                 collision_checker,
                 dt,
                 max_time_steps,
+                time_origin,
             )
             for time_index, row, col in indexed_cells:
                 vertices.update(
@@ -117,15 +123,16 @@ class ReservationTable:
         collision_checker: CollisionChecker,
         dt: float,
         max_time_steps: int,
+        time_origin: float = 0.0,
     ) -> list[tuple[int, int, int]]:
         """Convert a continuous path to one reserved grid cell per time step."""
         if not path:
             return []
 
         pose_by_time = {
-            int(round(pose[3] / dt)): pose
+            int(round((pose[3] - time_origin) / dt)): pose
             for pose in path
-            if int(round(pose[3] / dt)) <= max_time_steps
+            if 0 <= int(round((pose[3] - time_origin) / dt)) <= max_time_steps
         }
         indexed_cells: list[tuple[int, int, int]] = []
         last_pose = path[0]

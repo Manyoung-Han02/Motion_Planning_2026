@@ -21,7 +21,7 @@ def test_run_benchmark_saves_csv_and_bar_plots(tmp_path: Path) -> None:
         "Independent A*",
         "Prioritized Planning",
         "Risk-aware Prioritized Planning",
-        "Proposed Concurrent Local Wait",
+        "Proposed Windowed Risk-Aware",
     }
     assert (tmp_path / "success_rate.png").exists()
     assert (tmp_path / "computation_time.png").exists()

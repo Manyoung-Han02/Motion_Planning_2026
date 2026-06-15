@@ -393,7 +393,17 @@ def _rollout_pedestrian(
     index: int,
 ) -> list[ContinuousPose]:
     """Roll one pedestrian forward while avoiding walls and shelves."""
-    waypoints = [(point[1], point[2]) for point in pedestrian.trajectory]
+    waypoint_radius = pedestrian.radius + 0.12
+    waypoints = [
+        _nearest_valid_pedestrian_waypoint(
+            scenario,
+            checker,
+            point[1],
+            point[2],
+            waypoint_radius,
+        )
+        for point in pedestrian.trajectory
+    ]
     x, y = waypoints[0]
     target_index = 1 if len(waypoints) > 1 else 0
     speed = 0.45 + 0.07 * (index % 4)
@@ -469,7 +479,7 @@ def _valid_pedestrian_step(
                 candidate_heading,
                 pedestrian.radius,
             )
-            if checker.collides_with_static_obstacle(state):
+            if _pedestrian_collides_with_static_obstacle(state, checker, scenario):
                 continue
             lookahead_state = RobotState(
                 candidate_x + 0.6 * step * cos(candidate_heading),
@@ -477,7 +487,11 @@ def _valid_pedestrian_step(
                 candidate_heading,
                 pedestrian.radius,
             )
-            if checker.collides_with_static_obstacle(lookahead_state):
+            if _pedestrian_collides_with_static_obstacle(
+                lookahead_state,
+                checker,
+                scenario,
+            ):
                 continue
 
             progress = previous_distance - hypot(target[0] - candidate_x, target[1] - candidate_y)
@@ -491,6 +505,54 @@ def _valid_pedestrian_step(
             return best_candidate
 
     return (x, y, current_heading)
+
+
+def _pedestrian_collides_with_static_obstacle(
+    state: RobotState,
+    checker: CollisionChecker,
+    scenario: ScenarioConfig,
+) -> bool:
+    """Return whether a pedestrian circle overlaps shelves or boundaries."""
+    if checker.collides_with_static_obstacle(state):
+        return True
+    return any(
+        _circle_overlaps_rectangle(state, obstacle)
+        for obstacle in scenario.warehouse.static_obstacles
+    )
+
+
+def _circle_overlaps_rectangle(state: RobotState, obstacle) -> bool:
+    """Return whether a circular footprint intersects a rectangle."""
+    xmin, ymin, xmax, ymax = obstacle.bounds
+    nearest_x = min(max(state.x, xmin), xmax)
+    nearest_y = min(max(state.y, ymin), ymax)
+    return hypot(state.x - nearest_x, state.y - nearest_y) <= state.radius
+
+
+def _nearest_valid_pedestrian_waypoint(
+    scenario: ScenarioConfig,
+    checker: CollisionChecker,
+    x: float,
+    y: float,
+    radius: float,
+) -> tuple[float, float]:
+    """Move an invalid pedestrian waypoint to nearby free space."""
+    state = RobotState(x, y, 0.0, radius)
+    if not _pedestrian_collides_with_static_obstacle(state, checker, scenario):
+        return (x, y)
+
+    resolution = scenario.warehouse.resolution
+    max_radius = max(scenario.warehouse.width, scenario.warehouse.height)
+    angle_count = 96
+    for search_radius in np.arange(resolution, max_radius + resolution, resolution):
+        for angle in np.linspace(0.0, 2.0 * pi, angle_count, endpoint=False):
+            candidate_x = x + search_radius * cos(angle)
+            candidate_y = y + search_radius * sin(angle)
+            candidate = RobotState(candidate_x, candidate_y, 0.0, radius)
+            if not _pedestrian_collides_with_static_obstacle(candidate, checker, scenario):
+                return (float(candidate_x), float(candidate_y))
+
+    return (x, y)
 
 
 def _wrap_angle(angle: float) -> float:

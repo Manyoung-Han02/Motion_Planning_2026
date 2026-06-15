@@ -22,11 +22,11 @@ from warehouse_planning.models.robot import Robot, RobotSpec, RobotState
 from warehouse_planning.planning.collision import CollisionChecker
 from warehouse_planning.planning.kinodynamic_astar import KinodynamicAStarPlanner
 from warehouse_planning.planning.prioritized import (
-    ConcurrentLocalWaitPlanner,
     IndependentPlanner,
     MultiRobotPlanResult,
     PrioritizedPlanner,
 )
+from warehouse_planning.planning.windowed import WindowedConflictReplanner
 
 
 @dataclass(frozen=True)
@@ -73,12 +73,12 @@ def build_benchmark_methods(risk_weight: float = 8.0) -> list[BenchmarkMethod]:
             ),
         ),
         BenchmarkMethod(
-            "Proposed Concurrent Local Wait",
-            lambda scenario: ConcurrentLocalWaitPlanner(
+            "Proposed Windowed Risk-Aware",
+            lambda scenario: WindowedConflictReplanner(
                 _base_planner(scenario, risk_weight=risk_weight),
-                time_step=scenario.simulation.dt,
-                wait_step=0.4,
-                max_total_wait=4.0,
+                window_steps=24,
+                repair_iterations=2,
+                lookback_steps=3,
                 clearance_margin=0.14,
             ),
         ),

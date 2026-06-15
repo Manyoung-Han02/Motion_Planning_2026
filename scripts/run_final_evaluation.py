@@ -31,11 +31,11 @@ from warehouse_planning.models.robot import Robot, RobotState
 from warehouse_planning.planning.collision import CollisionChecker
 from warehouse_planning.planning.kinodynamic_astar import ContinuousPose, KinodynamicAStarPlanner
 from warehouse_planning.planning.prioritized import (
-    ConcurrentLocalWaitPlanner,
     IndependentPlanner,
     MultiRobotPlanResult,
     PrioritizedPlanner,
 )
+from warehouse_planning.planning.windowed import WindowedConflictReplanner
 
 
 OUTPUT_DIR = PROJECT_ROOT / "results" / "final_evaluation"
@@ -132,11 +132,11 @@ def run_methods(scenario: ScenarioConfig) -> list[tuple[str, MultiRobotPlanResul
         ),
         (
             "Proposed risk-aware planner",
-            ConcurrentLocalWaitPlanner(
+            WindowedConflictReplanner(
                 make_planner(scenario, risk_weight=8.0, reservation_padding=3),
-                time_step=scenario.simulation.dt,
-                wait_step=0.4,
-                max_total_wait=6.0,
+                window_steps=32,
+                repair_iterations=2,
+                lookback_steps=4,
                 clearance_margin=0.14,
             ),
         ),
