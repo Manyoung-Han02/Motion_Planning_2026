@@ -182,10 +182,10 @@ def run_risk_ablation(scenario: ScenarioConfig) -> pd.DataFrame:
     """Run risk-weight and risk-spread ablations for one robot."""
     rows = []
     robot = scenario.robots[0]
-    for weight in (0.0, 2.0, 4.0, 8.0, 12.0):
+    for weight in np.linspace(0.0, 4.0, 11):
         planner = make_planner(
             scenario,
-            risk_weight=weight,
+            risk_weight=float(weight),
             reservation_padding=0,
             safety_distance=1.6,
             risk_sigma=0.75,
@@ -195,22 +195,22 @@ def run_risk_ablation(scenario: ScenarioConfig) -> pd.DataFrame:
         start_time = perf_counter()
         path = planner.plan(robot)
         result = single_robot_result(robot.id, path, planner_time=perf_counter() - start_time)
-        rows.append({"ablation": "risk_weight", "value": weight, **metric_row(scenario, result)})
+        rows.append({"ablation": "risk_weight", "value": float(weight), **metric_row(scenario, result)})
 
-    for sigma in (0.45, 0.75, 1.05, 1.35):
+    for sigma in np.linspace(0.1, 1.0, 10):
         planner = make_planner(
             scenario,
             risk_weight=8.0,
             reservation_padding=0,
             safety_distance=1.6,
-            risk_sigma=sigma,
+            risk_sigma=float(sigma),
             planner_horizon=55,
             theta_bins=12,
         )
         start_time = perf_counter()
         path = planner.plan(robot)
         result = single_robot_result(robot.id, path, planner_time=perf_counter() - start_time)
-        rows.append({"ablation": "risk_sigma", "value": sigma, **metric_row(scenario, result)})
+        rows.append({"ablation": "risk_sigma", "value": float(sigma), **metric_row(scenario, result)})
     return pd.DataFrame(rows)
 
 
@@ -498,11 +498,19 @@ def save_risk_ablation_plot(frame: pd.DataFrame) -> None:
     fig, axes = plt.subplots(1, 2, figsize=(10.8, 3.4))
     for ax, ablation, title in zip(axes, ("risk_weight", "risk_sigma"), ("Risk weight", "Risk sigma")):
         subset = frame[frame["ablation"] == ablation].sort_values("value")
-        ax.plot(subset["value"], subset["total_distance"], marker="o", label="distance")
-        ax.plot(subset["value"], subset["min_human_clearance"], marker="s", label="min clearance")
-        ax.plot(subset["value"], subset[f"human_near_count_{NEAR_LARGE_M:.2f}m"], marker="^", label="near <= 1.0m")
+        for metric, label, marker in (
+            ("total_distance", "distance", "o"),
+            ("min_human_clearance", "min clearance", "s"),
+            (f"human_near_count_{NEAR_LARGE_M:.2f}m", "near <= 1.0m", "^"),
+            ("computation_time", "time", "D"),
+        ):
+            values = subset[metric].astype(float)
+            span = values.max() - values.min()
+            normalized = (values - values.min()) / span if span > 1e-9 else values * 0.0
+            ax.plot(subset["value"], normalized, marker=marker, linewidth=1.6, markersize=4.5, label=label)
         ax.set_title(title)
         ax.set_xlabel("value")
+        ax.set_ylabel("normalized metric")
         ax.grid(axis="y", linewidth=0.35, alpha=0.3)
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -515,7 +523,7 @@ def save_risk_ablation_plot(frame: pd.DataFrame) -> None:
 def save_risk_heatmap_overlay(scenario: ScenarioConfig) -> None:
     """Show how paths deform as the human-risk weight changes."""
     robot = scenario.robots[0]
-    weights = (0.0, 2.0, 4.0, 8.0, 12.0)
+    weights = tuple(float(value) for value in np.linspace(0.0, 4.0, 11))
     colors = plt.get_cmap("Blues")(np.linspace(0.35, 0.95, len(weights)))
     fig, ax = plt.subplots(figsize=(10.2, 5.8))
     plotter = WarehousePlotter(style="clean")
