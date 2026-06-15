@@ -152,12 +152,12 @@ def save_risk_comparison(data: PaperData) -> None:
     comparison_time = min(6.0, scenario.simulation.horizon * 0.45)
     pedestrian_positions = pedestrian_positions_at_time(data.pedestrian_paths, comparison_time)
     baseline_path = plan_single_robot_path(scenario, robot_index=0, risk_weight=0.0)
-    risk_path = plan_single_robot_path(scenario, robot_index=0, risk_weight=8.0)
+    risk_path = data.robot_paths[robot.id]
 
     fig, axes = plt.subplots(1, 2, figsize=(13.2, 4.9))
     panels = (
         ("Without human risk field", baseline_path, False),
-        ("With human risk field", risk_path, True),
+        ("With human risk field (same path as video)", risk_path, True),
     )
     for ax, (title, path, show_risk) in zip(axes, panels):
         draw_paper_base_map(ax, scenario)
